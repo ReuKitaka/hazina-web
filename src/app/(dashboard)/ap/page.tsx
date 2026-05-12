@@ -2,21 +2,111 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apService } from '@/services/ap.service'
+import { accountsService } from '@/services/accounts.service'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge, fmt } from '@/components/shared/amount'
 import { EmptyState } from '@/components/shared/empty-state'
-import { ShoppingCart, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
+import { ShoppingCart, CheckCircle, XCircle, ChevronDown, ChevronRight, DollarSign } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import { format } from 'date-fns'
+import { Bill } from '@/types'
 
 const STATUSES = ['', 'DRAFT', 'APPROVED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']
+
+function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState({
+    paymentDate: format(new Date(), 'yyyy-MM-dd'),
+    amountPaid: String(bill.outstandingAmount),
+    paymentMethod: '',
+    paymentAccountId: '',
+  })
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => accountsService.findAll(),
+  })
+
+  const record = useMutation({
+    mutationFn: () => apService.recordPayment({
+      billId: bill.id,
+      paymentDate: form.paymentDate,
+      amountPaid: parseFloat(form.amountPaid),
+      paymentMethod: form.paymentMethod || undefined,
+      paymentAccountId: form.paymentAccountId,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bills'] })
+      toast.success('Payment recorded')
+      onClose()
+    },
+    onError: () => toast.error('Failed to record payment'),
+  })
+
+  const canSubmit = form.amountPaid && parseFloat(form.amountPaid) > 0 && form.paymentAccountId
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Record Payment — {bill.billNumber}</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 mt-2">
+        <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Supplier</span>
+            <span className="font-medium text-slate-900">{bill.supplierName}</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-slate-500">Outstanding</span>
+            <span className="font-semibold text-amber-600">{fmt(bill.outstandingAmount)}</span>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Date</label>
+          <input type="date" value={form.paymentDate} onChange={e => setForm(p => ({ ...p, paymentDate: e.target.value }))}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Amount Paid</label>
+          <input type="number" step="0.01" value={form.amountPaid} onChange={e => setForm(p => ({ ...p, amountPaid: e.target.value }))}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Account</label>
+          <select value={form.paymentAccountId} onChange={e => setForm(p => ({ ...p, paymentAccountId: e.target.value }))}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">Select account…</option>
+            {accounts.filter(a => a.type === 'ASSET').map(a => (
+              <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method <span className="text-slate-400 font-normal">(optional)</span></label>
+          <input value={form.paymentMethod} onChange={e => setForm(p => ({ ...p, paymentMethod: e.target.value }))}
+            placeholder="e.g. Bank Transfer, M-Pesa"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => record.mutate()} disabled={record.isPending || !canSubmit}>
+            {record.isPending ? 'Recording…' : 'Record Payment'}
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
+  )
+}
 
 export default function APPage() {
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [paymentBill, setPaymentBill] = useState<Bill | null>(null)
 
   const { data: bills = [], isLoading } = useQuery({
     queryKey: ['bills', statusFilter],
@@ -99,6 +189,12 @@ export default function APPage() {
                             </Button>
                           </>
                         )}
+                        {(bill.status === 'APPROVED' || bill.status === 'PARTIALLY_PAID') && (
+                          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs text-rose-600"
+                            onClick={() => setPaymentBill(bill)}>
+                            <DollarSign className="h-3 w-3" /> Record Payment
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -134,6 +230,10 @@ export default function APPage() {
           </table>
         </div>
       )}
+
+      <Dialog open={!!paymentBill} onOpenChange={v => !v && setPaymentBill(null)}>
+        {paymentBill && <PaymentDialog bill={paymentBill} onClose={() => setPaymentBill(null)} />}
+      </Dialog>
     </div>
   )
 }

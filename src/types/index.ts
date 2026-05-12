@@ -246,6 +246,34 @@ export interface ExchangeRate {
   createdAt: string
 }
 
+// ── Users ─────────────────────────────────────────────────────────────────────
+export interface UserProfile {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  role: 'ADMIN' | 'ACCOUNTANT' | 'VIEWER'
+  active: boolean
+  lastLoginAt?: string
+  createdAt: string
+}
+
+// ── FX Revaluation ────────────────────────────────────────────────────────────
+export interface RevaluationResponse {
+  journalEntryId: string
+  journalEntryNumber: string
+  accountId: string
+  accountCode: string
+  foreignCurrency: string
+  netForeignAmount: number
+  exchangeRate: number
+  originalFunctionalAmount: number
+  revaluedFunctionalAmount: number
+  fxAdjustment: number
+  isGain: boolean
+  valuationDate: string
+}
+
 // ── Reports ───────────────────────────────────────────────────────────────────
 export interface TrialBalanceLine {
   accountId: string

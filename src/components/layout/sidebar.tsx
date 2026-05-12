@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, BookOpen, FileText, Wallet, Receipt,
   ShoppingCart, Target, ArrowLeftRight, BarChart3, TrendingUp,
-  Building2, Activity, ChevronRight, LogOut
+  Building2, Activity, ChevronRight, LogOut, Users
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
@@ -47,6 +47,12 @@ const nav = [
       { label: 'Profit & Loss', href: '/reports/profit-and-loss', icon: TrendingUp },
       { label: 'Balance Sheet', href: '/reports/balance-sheet', icon: Building2 },
       { label: 'Cash Flow', href: '/reports/cash-flow', icon: Activity },
+    ],
+  },
+  {
+    group: 'Settings',
+    items: [
+      { label: 'Users', href: '/settings/users', icon: Users },
     ],
   },
 ]

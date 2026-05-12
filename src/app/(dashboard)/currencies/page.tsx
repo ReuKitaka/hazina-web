@@ -2,23 +2,33 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { currenciesService } from '@/services/currencies.service'
+import { accountsService } from '@/services/accounts.service'
 import { PageHeader } from '@/components/shared/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
-import { ArrowLeftRight, Plus } from 'lucide-react'
+import { ArrowLeftRight, Plus, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
+import { fmt } from '@/components/shared/amount'
 
 export default function CurrenciesPage() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [revalOpen, setRevalOpen] = useState(false)
   const [form, setForm] = useState({ baseCurrency: 'USD', quoteCurrency: 'KES', rate: '', effectiveDate: format(new Date(), 'yyyy-MM-dd') })
+  const [reval, setReval] = useState({ accountId: '', foreignCurrency: '', fxGainLossAccountId: '', valuationDate: format(new Date(), 'yyyy-MM-dd'), notes: '' })
 
   const { data: rates = [], isLoading } = useQuery({
     queryKey: ['exchangeRates'],
     queryFn: currenciesService.findAll,
+  })
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => accountsService.findAll(),
+    enabled: revalOpen,
   })
 
   const create = useMutation({
@@ -27,10 +37,30 @@ export default function CurrenciesPage() {
     onError: () => toast.error('Failed to add rate'),
   })
 
+  const revalue = useMutation({
+    mutationFn: () => currenciesService.revalue(reval),
+    onSuccess: (data) => {
+      setRevalOpen(false)
+      toast.success(`Revaluation posted — JE ${data.journalEntryNumber} | ${data.isGain ? 'FX Gain' : 'FX Loss'} ${fmt(Math.abs(data.fxAdjustment))}`)
+    },
+    onError: () => toast.error('Revaluation failed'),
+  })
+
+  const canReval = reval.accountId && reval.foreignCurrency.length === 3 && reval.fxGainLossAccountId
+
   return (
     <div>
       <PageHeader title="Exchange Rates" description="Manage currency rates for multi-currency transactions"
-        action={<Button onClick={() => setOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Add Rate</Button>}
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setRevalOpen(true)} className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Revalue
+            </Button>
+            <Button onClick={() => setOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Add Rate
+            </Button>
+          </div>
+        }
       />
 
       {isLoading ? (
@@ -68,6 +98,7 @@ export default function CurrenciesPage() {
         </div>
       )}
 
+      {/* Add Rate Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Add Exchange Rate</DialogTitle></DialogHeader>
@@ -98,6 +129,56 @@ export default function CurrenciesPage() {
               <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
               <Button onClick={() => create.mutate()} disabled={create.isPending || !form.rate}>
                 {create.isPending ? 'Adding…' : 'Add Rate'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* FX Revaluation Dialog */}
+      <Dialog open={revalOpen} onOpenChange={setRevalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>FX Revaluation</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-500 -mt-1">Revalues a foreign-currency account balance using the latest exchange rate and posts the gain/loss journal entry.</p>
+          <div className="space-y-4 mt-2">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Account to Revalue</label>
+              <select value={reval.accountId} onChange={e => setReval(p => ({ ...p, accountId: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">Select account…</option>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Foreign Currency</label>
+              <input value={reval.foreignCurrency} onChange={e => setReval(p => ({ ...p, foreignCurrency: e.target.value.toUpperCase() }))}
+                maxLength={3} placeholder="USD"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">FX Gain/Loss Account</label>
+              <select value={reval.fxGainLossAccountId} onChange={e => setReval(p => ({ ...p, fxGainLossAccountId: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">Select account…</option>
+                {accounts.filter(a => a.type === 'REVENUE' || a.type === 'EXPENSE').map(a => (
+                  <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Valuation Date</label>
+              <input type="date" value={reval.valuationDate} onChange={e => setReval(p => ({ ...p, valuationDate: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Notes <span className="text-slate-400 font-normal">(optional)</span></label>
+              <input value={reval.notes} onChange={e => setReval(p => ({ ...p, notes: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setRevalOpen(false)}>Cancel</Button>
+              <Button onClick={() => revalue.mutate()} disabled={revalue.isPending || !canReval}>
+                {revalue.isPending ? 'Processing…' : 'Run Revaluation'}
               </Button>
             </div>
           </div>

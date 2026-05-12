@@ -2,21 +2,111 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { arService } from '@/services/ar.service'
+import { accountsService } from '@/services/accounts.service'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge, fmt } from '@/components/shared/amount'
 import { EmptyState } from '@/components/shared/empty-state'
-import { Receipt, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
+import { Receipt, CheckCircle, XCircle, ChevronDown, ChevronRight, DollarSign } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import { format } from 'date-fns'
+import { Invoice } from '@/types'
 
 const STATUSES = ['', 'DRAFT', 'APPROVED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']
+
+function ReceiptDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState({
+    paymentDate: format(new Date(), 'yyyy-MM-dd'),
+    amountReceived: String(invoice.outstandingAmount),
+    paymentMethod: '',
+    paymentAccountId: '',
+  })
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => accountsService.findAll(),
+  })
+
+  const record = useMutation({
+    mutationFn: () => arService.recordReceipt({
+      invoiceId: invoice.id,
+      paymentDate: form.paymentDate,
+      amountReceived: parseFloat(form.amountReceived),
+      paymentMethod: form.paymentMethod || undefined,
+      paymentAccountId: form.paymentAccountId,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      toast.success('Receipt recorded')
+      onClose()
+    },
+    onError: () => toast.error('Failed to record receipt'),
+  })
+
+  const canSubmit = form.amountReceived && parseFloat(form.amountReceived) > 0 && form.paymentAccountId
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Record Receipt — {invoice.invoiceNumber}</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 mt-2">
+        <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Customer</span>
+            <span className="font-medium text-slate-900">{invoice.customerName}</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-slate-500">Outstanding</span>
+            <span className="font-semibold text-amber-600">{fmt(invoice.outstandingAmount)}</span>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Date</label>
+          <input type="date" value={form.paymentDate} onChange={e => setForm(p => ({ ...p, paymentDate: e.target.value }))}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Amount Received</label>
+          <input type="number" step="0.01" value={form.amountReceived} onChange={e => setForm(p => ({ ...p, amountReceived: e.target.value }))}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Account</label>
+          <select value={form.paymentAccountId} onChange={e => setForm(p => ({ ...p, paymentAccountId: e.target.value }))}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">Select account…</option>
+            {accounts.filter(a => a.type === 'ASSET').map(a => (
+              <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method <span className="text-slate-400 font-normal">(optional)</span></label>
+          <input value={form.paymentMethod} onChange={e => setForm(p => ({ ...p, paymentMethod: e.target.value }))}
+            placeholder="e.g. Bank Transfer, M-Pesa"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => record.mutate()} disabled={record.isPending || !canSubmit}>
+            {record.isPending ? 'Recording…' : 'Record Receipt'}
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
+  )
+}
 
 export default function ARPage() {
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [receiptInvoice, setReceiptInvoice] = useState<Invoice | null>(null)
 
   const { data: invoices = [], isLoading } = useQuery({
     queryKey: ['invoices', statusFilter],
@@ -99,6 +189,12 @@ export default function ARPage() {
                             </Button>
                           </>
                         )}
+                        {(inv.status === 'APPROVED' || inv.status === 'PARTIALLY_PAID') && (
+                          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs text-emerald-600"
+                            onClick={() => setReceiptInvoice(inv)}>
+                            <DollarSign className="h-3 w-3" /> Record Receipt
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -107,18 +203,20 @@ export default function ARPage() {
                       <td colSpan={9} className="px-6 py-0">
                         <div className="bg-slate-50 rounded-xl mx-2 my-3 overflow-hidden">
                           <table className="min-w-full">
-                            <thead>
-                              <tr><th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Description</th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Qty</th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Unit Price</th>
-                                <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Amount</th></tr>
-                            </thead>
+                            <thead><tr>
+                              <th className="px-4 py-2 text-left text-xs font-medium text-slate-500">Description</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Qty</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Unit Price</th>
+                              <th className="px-4 py-2 text-right text-xs font-medium text-slate-500">Amount</th>
+                            </tr></thead>
                             <tbody>
                               {inv.lines.map(l => (
-                                <tr key={l.id}><td className="px-4 py-2 text-xs text-slate-700">{l.description}</td>
+                                <tr key={l.id}>
+                                  <td className="px-4 py-2 text-xs text-slate-700">{l.description}</td>
                                   <td className="px-4 py-2 text-xs text-right">{l.quantity}</td>
                                   <td className="px-4 py-2 text-xs text-right">{fmt(l.unitPrice)}</td>
-                                  <td className="px-4 py-2 text-xs text-right font-medium">{fmt(l.amount)}</td></tr>
+                                  <td className="px-4 py-2 text-xs text-right font-medium">{fmt(l.amount)}</td>
+                                </tr>
                               ))}
                             </tbody>
                           </table>
@@ -132,6 +230,10 @@ export default function ARPage() {
           </table>
         </div>
       )}
+
+      <Dialog open={!!receiptInvoice} onOpenChange={v => !v && setReceiptInvoice(null)}>
+        {receiptInvoice && <ReceiptDialog invoice={receiptInvoice} onClose={() => setReceiptInvoice(null)} />}
+      </Dialog>
     </div>
   )
 }
