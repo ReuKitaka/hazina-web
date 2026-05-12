@@ -20,9 +20,9 @@ const STATUSES = ['', 'DRAFT', 'APPROVED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED'
 function ReceiptDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const qc = useQueryClient()
   const [form, setForm] = useState({
-    paymentDate: format(new Date(), 'yyyy-MM-dd'),
+    receiptDate: format(new Date(), 'yyyy-MM-dd'),
     amountReceived: String(invoice.outstandingAmount),
-    paymentMethod: '',
+    paymentMethod: 'BANK_TRANSFER',
     paymentAccountId: '',
   })
 
@@ -34,7 +34,7 @@ function ReceiptDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => 
   const record = useMutation({
     mutationFn: () => arService.recordReceipt({
       invoiceId: invoice.id,
-      paymentDate: form.paymentDate,
+      receiptDate: form.receiptDate,
       amountReceived: parseFloat(form.amountReceived),
       paymentMethod: form.paymentMethod || undefined,
       paymentAccountId: form.paymentAccountId,
@@ -67,7 +67,7 @@ function ReceiptDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => 
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Payment Date</label>
-          <input type="date" value={form.paymentDate} onChange={e => setForm(p => ({ ...p, paymentDate: e.target.value }))}
+          <input type="date" value={form.receiptDate} onChange={e => setForm(p => ({ ...p, receiptDate: e.target.value }))}
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         </div>
         <div>
@@ -86,10 +86,14 @@ function ReceiptDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => 
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method <span className="text-slate-400 font-normal">(optional)</span></label>
-          <input value={form.paymentMethod} onChange={e => setForm(p => ({ ...p, paymentMethod: e.target.value }))}
-            placeholder="e.g. Bank Transfer, M-Pesa"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
+          <select value={form.paymentMethod} onChange={e => setForm(p => ({ ...p, paymentMethod: e.target.value }))}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="BANK_TRANSFER">Bank Transfer</option>
+            <option value="MOBILE_MONEY">Mobile Money</option>
+            <option value="CASH">Cash</option>
+            <option value="CHEQUE">Cheque</option>
+          </select>
         </div>
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -170,7 +174,7 @@ export default function ARPage() {
                     </td>
                     <td className="px-6 py-4 text-sm font-mono font-semibold text-indigo-600">{inv.invoiceNumber}</td>
                     <td className="px-6 py-4 text-sm text-slate-900 font-medium">{inv.customerName}</td>
-                    <td className="px-6 py-4 text-sm text-slate-500">{inv.invoiceDate}</td>
+                    <td className="px-6 py-4 text-sm text-slate-500">{inv.issueDate}</td>
                     <td className="px-6 py-4 text-sm text-slate-500">{inv.dueDate}</td>
                     <td className="px-6 py-4 text-sm text-right font-medium">{fmt(inv.totalAmount)}</td>
                     <td className="px-6 py-4 text-sm text-right font-semibold text-amber-600">{fmt(inv.outstandingAmount)}</td>

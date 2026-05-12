@@ -22,7 +22,7 @@ function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
   const [form, setForm] = useState({
     paymentDate: format(new Date(), 'yyyy-MM-dd'),
     amountPaid: String(bill.outstandingAmount),
-    paymentMethod: '',
+    paymentMethod: 'BANK_TRANSFER',
     paymentAccountId: '',
   })
 
@@ -86,10 +86,14 @@ function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method <span className="text-slate-400 font-normal">(optional)</span></label>
-          <input value={form.paymentMethod} onChange={e => setForm(p => ({ ...p, paymentMethod: e.target.value }))}
-            placeholder="e.g. Bank Transfer, M-Pesa"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
+          <select value={form.paymentMethod} onChange={e => setForm(p => ({ ...p, paymentMethod: e.target.value }))}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="BANK_TRANSFER">Bank Transfer</option>
+            <option value="MOBILE_MONEY">Mobile Money</option>
+            <option value="CASH">Cash</option>
+            <option value="CHEQUE">Cheque</option>
+          </select>
         </div>
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>

@@ -115,7 +115,7 @@ export interface Invoice {
   customerName?: string
   arAccountId: string
   arAccountCode?: string
-  invoiceDate: string
+  issueDate: string
   dueDate: string
   customerRef?: string
   status: 'DRAFT' | 'APPROVED' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED'
