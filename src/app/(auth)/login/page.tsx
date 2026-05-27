@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { authService } from '@/services/auth.service'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -20,9 +21,17 @@ export default function LoginPage() {
     try {
       const data = await authService.login({ email, password })
       login(data)
-      router.push('/dashboard')
-    } catch {
-      toast.error('Invalid email or password')
+      const isSuperAdmin = data.role === 'SUPER_ADMIN'
+      const hasOrg = !!data.organisationId
+      router.push(isSuperAdmin && !hasOrg ? '/admin/organisations' : '/dashboard')
+    } catch (err: any) {
+      const message = err?.response?.data?.message
+      const status = err?.response?.status
+      if (status === 403) {
+        toast.warning(message ?? 'Your account is not yet active.')
+      } else {
+        toast.error(message ?? 'Invalid email or password.')
+      }
     } finally {
       setLoading(false)
     }
@@ -76,7 +85,11 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
-        <p className="text-center text-xs text-slate-600 mt-6">Hazina v1.0 · Double-entry accounting</p>
+        <p className="text-center text-sm text-slate-500 mt-4">
+          New organisation?{' '}
+          <Link href="/register" className="text-indigo-400 hover:text-indigo-300">Register here</Link>
+        </p>
+        <p className="text-center text-xs text-slate-600 mt-4">Hazina v1.0 · Double-entry accounting</p>
       </div>
     </div>
   )

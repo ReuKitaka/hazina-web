@@ -1,15 +1,163 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { cashbookService } from '@/services/cashbook.service'
+import { accountsService } from '@/services/accounts.service'
 import { PageHeader } from '@/components/shared/page-header'
-import { fmt, StatusBadge } from '@/components/shared/amount'
+import { fmt } from '@/components/shared/amount'
 import { EmptyState } from '@/components/shared/empty-state'
-import { Wallet, ArrowDownLeft, ArrowUpRight } from 'lucide-react'
+import { Wallet, ArrowDownLeft, ArrowUpRight, Plus, X } from 'lucide-react'
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toast } from 'sonner'
+import { format } from 'date-fns'
+
+const input = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500'
+const label = 'block text-sm font-medium text-slate-700 mb-1'
+
+function NewAccountDialog({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
+  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsService.findAll() })
+  const [form, setForm] = useState({ name: '', accountId: '', currency: 'KES', bankName: '', accountNumber: '' })
+
+  const create = useMutation({
+    mutationFn: () => cashbookService.createAccount(form),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cashAccounts'] }); toast.success('Cash account created'); onClose() },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create account'),
+  })
+
+  const set = (f: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(p => ({ ...p, [f]: e.target.value }))
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader><DialogTitle>New Cash Account</DialogTitle></DialogHeader>
+      <div className="space-y-4 mt-2">
+        <div>
+          <label className={label}>Account Name</label>
+          <input className={input} value={form.name} onChange={set('name')} required placeholder="e.g. KCB Current Account" />
+        </div>
+        <div>
+          <label className={label}>GL Account (Asset)</label>
+          <select className={input} value={form.accountId} onChange={set('accountId')} required>
+            <option value="">Select account…</option>
+            {accounts.filter(a => a.type === 'ASSET').map(a => (
+              <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={label}>Currency</label>
+            <select className={input} value={form.currency} onChange={set('currency')}>
+              {['KES', 'USD', 'EUR', 'GBP', 'UGX', 'TZS'].map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={label}>Bank Name <span className="text-slate-400">(optional)</span></label>
+            <input className={input} value={form.bankName} onChange={set('bankName')} placeholder="KCB Bank" />
+          </div>
+        </div>
+        <div>
+          <label className={label}>Account Number <span className="text-slate-400">(optional)</span></label>
+          <input className={input} value={form.accountNumber} onChange={set('accountNumber')} placeholder="1234567890" />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => create.mutate()} disabled={create.isPending || !form.name || !form.accountId}>
+            {create.isPending ? 'Creating…' : 'Create Account'}
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
+  )
+}
+
+function NewTransactionDialog({ accountId, onClose }: { accountId: string; onClose: () => void }) {
+  const qc = useQueryClient()
+  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsService.findAll() })
+  const [form, setForm] = useState({
+    cashAccountId: accountId,
+    transactionType: 'RECEIPT',
+    amount: '',
+    description: '',
+    reference: '',
+    counterpartAccountId: '',
+    transactionDate: format(new Date(), 'yyyy-MM-dd'),
+  })
+
+  const record = useMutation({
+    mutationFn: () => cashbookService.recordTransaction({ ...form, amount: parseFloat(form.amount) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cashTransactions'] })
+      qc.invalidateQueries({ queryKey: ['cashAccounts'] })
+      toast.success('Transaction recorded')
+      onClose()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to record transaction'),
+  })
+
+  const set = (f: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(p => ({ ...p, [f]: e.target.value }))
+
+  const canSubmit = form.amount && parseFloat(form.amount) > 0 && form.description && form.counterpartAccountId
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader><DialogTitle>Record Transaction</DialogTitle></DialogHeader>
+      <div className="space-y-4 mt-2">
+        <div>
+          <label className={label}>Type</label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['RECEIPT', 'PAYMENT'] as const).map(t => (
+              <button key={t} type="button" onClick={() => setForm(p => ({ ...p, transactionType: t }))}
+                className={`rounded-lg border py-2 text-sm font-medium transition-colors ${form.transactionType === t ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                {t === 'RECEIPT' ? '↓ Receipt' : '↑ Payment'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={label}>Date</label>
+            <input type="date" className={input} value={form.transactionDate} onChange={set('transactionDate')} />
+          </div>
+          <div>
+            <label className={label}>Amount</label>
+            <input type="number" step="0.01" className={input} value={form.amount} onChange={set('amount')} placeholder="0.00" />
+          </div>
+        </div>
+        <div>
+          <label className={label}>Description</label>
+          <input className={input} value={form.description} onChange={set('description')} placeholder="Payment description" />
+        </div>
+        <div>
+          <label className={label}>Counterpart Account</label>
+          <select className={input} value={form.counterpartAccountId} onChange={set('counterpartAccountId')}>
+            <option value="">Select account…</option>
+            {accounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={label}>Reference <span className="text-slate-400">(optional)</span></label>
+          <input className={input} value={form.reference} onChange={set('reference')} placeholder="REF-001" />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => record.mutate()} disabled={record.isPending || !canSubmit}>
+            {record.isPending ? 'Recording…' : 'Record'}
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
+  )
+}
 
 export default function CashBookPage() {
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null)
+  const [showNewAccount, setShowNewAccount] = useState(false)
+  const [showNewTxn, setShowNewTxn] = useState(false)
 
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ['cashAccounts'],
@@ -26,7 +174,13 @@ export default function CashBookPage() {
 
   return (
     <div>
-      <PageHeader title="Cash Book" description="Track cash and bank account movements" />
+      <PageHeader title="Cash Book" description="Track cash and bank account movements"
+        action={
+          <Button onClick={() => setShowNewAccount(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> New Account
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <div className="grid grid-cols-3 gap-4">{[...Array(3)].map((_, i) => <div key={i} className="h-28 rounded-2xl bg-slate-100 animate-pulse" />)}</div>
@@ -34,7 +188,6 @@ export default function CashBookPage() {
         <EmptyState icon={Wallet} title="No cash accounts" description="Create a cash account to start tracking transactions." />
       ) : (
         <>
-          {/* Account cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
             {accounts.map(ca => (
               <button key={ca.id} onClick={() => setSelectedAccount(ca.id === selectedAccount ? null : ca.id)}
@@ -52,11 +205,13 @@ export default function CashBookPage() {
             ))}
           </div>
 
-          {/* Transactions */}
           {selectedAccount && (
             <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-semibold text-slate-900">{activeAccount?.name} — Transactions</h3>
+                <Button size="sm" onClick={() => setShowNewTxn(true)} className="gap-1.5">
+                  <Plus className="h-3.5 w-3.5" /> Record Transaction
+                </Button>
               </div>
               {transactions.length === 0 ? (
                 <div className="py-12 text-center text-sm text-slate-400">No transactions yet</div>
@@ -95,6 +250,14 @@ export default function CashBookPage() {
           )}
         </>
       )}
+
+      <Dialog open={showNewAccount} onOpenChange={v => !v && setShowNewAccount(false)}>
+        <NewAccountDialog onClose={() => setShowNewAccount(false)} />
+      </Dialog>
+
+      <Dialog open={showNewTxn} onOpenChange={v => !v && setShowNewTxn(false)}>
+        {selectedAccount && <NewTransactionDialog accountId={selectedAccount} onClose={() => setShowNewTxn(false)} />}
+      </Dialog>
     </div>
   )
 }

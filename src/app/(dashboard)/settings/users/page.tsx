@@ -30,7 +30,7 @@ export default function UsersPage() {
   })
 
   const create = useMutation({
-    mutationFn: () => usersService.register(form),
+    mutationFn: () => usersService.create(form),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] })
       setOpen(false)

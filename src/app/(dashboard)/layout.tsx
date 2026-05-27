@@ -1,18 +1,23 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { token, isLoading } = useAuth()
+  const { token, isLoading, isSuperAdmin, hasOrgContext } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
-    if (!isLoading && !token) router.push('/login')
-  }, [token, isLoading, router])
+    if (isLoading) return
+    if (!token) { router.push('/login'); return }
+    if (isSuperAdmin && !hasOrgContext && pathname !== '/admin/organisations') {
+      router.push('/admin/organisations')
+    }
+  }, [token, isLoading, isSuperAdmin, hasOrgContext, pathname, router])
 
   if (isLoading) {
     return (

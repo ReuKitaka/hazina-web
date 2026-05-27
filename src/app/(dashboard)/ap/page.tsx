@@ -6,7 +6,7 @@ import { accountsService } from '@/services/accounts.service'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatusBadge, fmt } from '@/components/shared/amount'
 import { EmptyState } from '@/components/shared/empty-state'
-import { ShoppingCart, CheckCircle, XCircle, ChevronDown, ChevronRight, DollarSign } from 'lucide-react'
+import { ShoppingCart, CheckCircle, XCircle, ChevronDown, ChevronRight, DollarSign, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -15,7 +15,149 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { Bill } from '@/types'
 
+const input = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500'
+const label = 'block text-sm font-medium text-slate-700 mb-1'
 const STATUSES = ['', 'DRAFT', 'APPROVED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']
+
+interface LineItem { description: string; quantity: string; unitPrice: string; expenseAccountId: string }
+const emptyLine = (): LineItem => ({ description: '', quantity: '1', unitPrice: '', expenseAccountId: '' })
+
+function NewBillDialog({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
+  const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: apService.findAllSuppliers })
+  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsService.findAll() })
+
+  const [form, setForm] = useState({
+    supplierId: '', apAccountId: '',
+    billDate: format(new Date(), 'yyyy-MM-dd'),
+    dueDate: format(new Date(), 'yyyy-MM-dd'),
+    supplierRef: '', notes: '',
+  })
+  const [lines, setLines] = useState<LineItem[]>([emptyLine()])
+
+  const setF = (f: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm(p => ({ ...p, [f]: e.target.value }))
+
+  const setLine = (i: number, f: keyof LineItem) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [f]: e.target.value } : l))
+  }
+
+  const addLine = () => setLines(p => [...p, emptyLine()])
+  const removeLine = (i: number) => setLines(p => p.filter((_, idx) => idx !== i))
+
+  const total = lines.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0) * (parseFloat(l.unitPrice) || 0), 0)
+
+  const create = useMutation({
+    mutationFn: () => apService.createBill({
+      ...form,
+      lines: lines.map(l => ({
+        description: l.description,
+        quantity: parseFloat(l.quantity),
+        unitPrice: parseFloat(l.unitPrice),
+        expenseAccountId: l.expenseAccountId,
+      })),
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bills'] }); toast.success('Bill created'); onClose() },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create bill'),
+  })
+
+  const canSubmit = form.supplierId && form.apAccountId && form.billDate && form.dueDate &&
+    lines.every(l => l.description && l.quantity && l.unitPrice && l.expenseAccountId)
+
+  const apAccounts = accounts.filter(a => a.type === 'LIABILITY')
+  const expenseAccounts = accounts.filter(a => a.type === 'EXPENSE')
+
+  return (
+    <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader><DialogTitle>New Bill</DialogTitle></DialogHeader>
+      <div className="space-y-4 mt-2">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={label}>Supplier</label>
+            <select className={input} value={form.supplierId} onChange={setF('supplierId')}>
+              <option value="">Select supplier…</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={label}>AP Account</label>
+            <select className={input} value={form.apAccountId} onChange={setF('apAccountId')}>
+              <option value="">Select account…</option>
+              {apAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={label}>Bill Date</label>
+            <input type="date" className={input} value={form.billDate} onChange={setF('billDate')} />
+          </div>
+          <div>
+            <label className={label}>Due Date</label>
+            <input type="date" className={input} value={form.dueDate} onChange={setF('dueDate')} />
+          </div>
+        </div>
+        <div>
+          <label className={label}>Supplier Reference <span className="text-slate-400">(optional)</span></label>
+          <input className={input} value={form.supplierRef} onChange={setF('supplierRef')} placeholder="INV-5678" />
+        </div>
+
+        {/* Line items */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-slate-700">Line Items</label>
+            <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+              <Plus className="h-3.5 w-3.5" /> Add line
+            </button>
+          </div>
+          <div className="space-y-2">
+            {lines.map((line, i) => (
+              <div key={i} className="grid grid-cols-12 gap-2 items-start">
+                <div className="col-span-4">
+                  <input className={input} placeholder="Description" value={line.description} onChange={setLine(i, 'description')} />
+                </div>
+                <div className="col-span-2">
+                  <input type="number" className={input} placeholder="Qty" value={line.quantity} onChange={setLine(i, 'quantity')} min="1" />
+                </div>
+                <div className="col-span-2">
+                  <input type="number" step="0.01" className={input} placeholder="Price" value={line.unitPrice} onChange={setLine(i, 'unitPrice')} />
+                </div>
+                <div className="col-span-3">
+                  <select className={input} value={line.expenseAccountId} onChange={setLine(i, 'expenseAccountId')}>
+                    <option value="">Expense account…</option>
+                    {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-1 flex justify-end pt-1">
+                  {lines.length > 1 && (
+                    <button type="button" onClick={() => removeLine(i)} className="text-slate-400 hover:text-red-500 transition-colors">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end mt-3">
+            <span className="text-sm font-semibold text-slate-700">Total: {fmt(total)}</span>
+          </div>
+        </div>
+
+        <div>
+          <label className={label}>Notes <span className="text-slate-400">(optional)</span></label>
+          <textarea className={input} rows={2} value={form.notes} onChange={setF('notes')} placeholder="Any additional notes…" />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => create.mutate()} disabled={create.isPending || !canSubmit}>
+            {create.isPending ? 'Creating…' : 'Create Bill'}
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
+  )
+}
 
 function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
   const qc = useQueryClient()
@@ -26,10 +168,7 @@ function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
     paymentAccountId: '',
   })
 
-  const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts'],
-    queryFn: () => accountsService.findAll(),
-  })
+  const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => accountsService.findAll() })
 
   const record = useMutation({
     mutationFn: () => apService.recordPayment({
@@ -39,11 +178,7 @@ function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
       paymentMethod: form.paymentMethod || undefined,
       paymentAccountId: form.paymentAccountId,
     }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['bills'] })
-      toast.success('Payment recorded')
-      onClose()
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bills'] }); toast.success('Payment recorded'); onClose() },
     onError: () => toast.error('Failed to record payment'),
   })
 
@@ -51,9 +186,7 @@ function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
 
   return (
     <DialogContent className="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>Record Payment — {bill.billNumber}</DialogTitle>
-      </DialogHeader>
+      <DialogHeader><DialogTitle>Record Payment — {bill.billNumber}</DialogTitle></DialogHeader>
       <div className="space-y-4 mt-2">
         <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm">
           <div className="flex justify-between">
@@ -66,19 +199,16 @@ function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Date</label>
-          <input type="date" value={form.paymentDate} onChange={e => setForm(p => ({ ...p, paymentDate: e.target.value }))}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <label className={label}>Payment Date</label>
+          <input type="date" value={form.paymentDate} onChange={e => setForm(p => ({ ...p, paymentDate: e.target.value }))} className={input} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Amount Paid</label>
-          <input type="number" step="0.01" value={form.amountPaid} onChange={e => setForm(p => ({ ...p, amountPaid: e.target.value }))}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <label className={label}>Amount Paid</label>
+          <input type="number" step="0.01" value={form.amountPaid} onChange={e => setForm(p => ({ ...p, amountPaid: e.target.value }))} className={input} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Account</label>
-          <select value={form.paymentAccountId} onChange={e => setForm(p => ({ ...p, paymentAccountId: e.target.value }))}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <label className={label}>Payment Account</label>
+          <select value={form.paymentAccountId} onChange={e => setForm(p => ({ ...p, paymentAccountId: e.target.value }))} className={input}>
             <option value="">Select account…</option>
             {accounts.filter(a => a.type === 'ASSET').map(a => (
               <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
@@ -86,9 +216,8 @@ function PaymentDialog({ bill, onClose }: { bill: Bill; onClose: () => void }) {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Payment Method</label>
-          <select value={form.paymentMethod} onChange={e => setForm(p => ({ ...p, paymentMethod: e.target.value }))}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <label className={label}>Payment Method</label>
+          <select value={form.paymentMethod} onChange={e => setForm(p => ({ ...p, paymentMethod: e.target.value }))} className={input}>
             <option value="BANK_TRANSFER">Bank Transfer</option>
             <option value="MOBILE_MONEY">Mobile Money</option>
             <option value="CASH">Cash</option>
@@ -110,6 +239,7 @@ export default function APPage() {
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [showNewBill, setShowNewBill] = useState(false)
   const [paymentBill, setPaymentBill] = useState<Bill | null>(null)
 
   const { data: bills = [], isLoading } = useQuery({
@@ -130,9 +260,15 @@ export default function APPage() {
 
   return (
     <div>
-      <PageHeader title="Accounts Payable"
-        description="Supplier bills and payments"
-        action={<Link href="/ap/suppliers"><Button variant="outline">Manage Suppliers</Button></Link>}
+      <PageHeader title="Accounts Payable" description="Supplier bills and payments"
+        action={
+          <div className="flex gap-2">
+            <Link href="/ap/suppliers"><Button variant="outline">Manage Suppliers</Button></Link>
+            <Button onClick={() => setShowNewBill(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> New Bill
+            </Button>
+          </div>
+        }
       />
 
       <div className="flex gap-2 mb-6 flex-wrap">
@@ -234,6 +370,10 @@ export default function APPage() {
           </table>
         </div>
       )}
+
+      <Dialog open={showNewBill} onOpenChange={v => !v && setShowNewBill(false)}>
+        <NewBillDialog onClose={() => setShowNewBill(false)} />
+      </Dialog>
 
       <Dialog open={!!paymentBill} onOpenChange={v => !v && setPaymentBill(null)}>
         {paymentBill && <PaymentDialog bill={paymentBill} onClose={() => setPaymentBill(null)} />}

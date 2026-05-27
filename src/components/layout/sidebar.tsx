@@ -5,18 +5,19 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, BookOpen, FileText, Wallet, Receipt,
   ShoppingCart, Target, ArrowLeftRight, BarChart3, TrendingUp,
-  Building2, Activity, ChevronRight, LogOut, Users
+  Building2, Activity, ChevronRight, LogOut, Users, LogOut as ExitIcon
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { useMutation } from '@tanstack/react-query'
+import { organisationsService } from '@/services/organisations.service'
+import { toast } from 'sonner'
 
 const nav = [
   {
     group: 'Overview',
-    items: [
-      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    ],
+    items: [{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard }],
   },
   {
     group: 'Finance',
@@ -51,21 +52,40 @@ const nav = [
   },
   {
     group: 'Settings',
+    items: [{ label: 'Users', href: '/settings/users', icon: Users }],
+  },
+]
+
+const superAdminNav = [
+  {
+    group: 'Administration',
     items: [
-      { label: 'Users', href: '/settings/users', icon: Users },
+      { label: 'Organisations', href: '/admin/organisations', icon: Building2 },
+      { label: 'Super Admins', href: '/admin/users', icon: Users },
     ],
   },
 ]
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { user, logout } = useAuth()
+  const { user, isSuperAdmin, hasOrgContext, logout, updateToken } = useAuth()
   const router = useRouter()
+
+  const exitOrg = useMutation({
+    mutationFn: () => organisationsService.exitOrg(),
+    onSuccess: (data) => {
+      updateToken(data)
+      toast.success('Exited organisation view')
+      router.push('/admin/organisations')
+    },
+  })
 
   const handleLogout = () => {
     logout()
     router.push('/login')
   }
+
+  const visibleNav = isSuperAdmin && !hasOrgContext ? superAdminNav : nav
 
   return (
     <aside className="fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-slate-900">
@@ -80,9 +100,23 @@ export function Sidebar() {
         </div>
       </div>
 
+      {/* Org context banner for SUPER_ADMIN */}
+      {isSuperAdmin && hasOrgContext && (
+        <div className="mx-3 mt-3 rounded-lg bg-indigo-900/50 border border-indigo-700 px-3 py-2">
+          <p className="text-[10px] text-indigo-300 font-semibold uppercase tracking-wider">Viewing</p>
+          <p className="text-xs text-white font-medium truncate">{user?.orgName}</p>
+          <button
+            onClick={() => exitOrg.mutate()}
+            className="mt-1 flex items-center gap-1 text-[10px] text-indigo-300 hover:text-white transition-colors"
+          >
+            <ExitIcon className="h-3 w-3" /> Exit org view
+          </button>
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-        {nav.map((section) => (
+        {visibleNav.map((section) => (
           <div key={section.group}>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
               {section.group}
@@ -111,6 +145,35 @@ export function Sidebar() {
             </ul>
           </div>
         ))}
+
+        {/* Also show org nav when SUPER_ADMIN is inside an org */}
+        {isSuperAdmin && hasOrgContext && superAdminNav.map((section) => (
+          <div key={section.group}>
+            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+              {section.group}
+            </p>
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const active = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                        active ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="flex-1">{item.label}</span>
+                      {active && <ChevronRight className="h-3 w-3 opacity-60" />}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       {/* User footer */}
@@ -123,11 +186,7 @@ export function Sidebar() {
             <p className="text-xs font-medium text-white truncate">{user?.email}</p>
             <p className="text-[10px] text-slate-400">{user?.role}</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-slate-500 hover:text-red-400 transition-colors"
-            title="Logout"
-          >
+          <button onClick={handleLogout} className="text-slate-500 hover:text-red-400 transition-colors" title="Logout">
             <LogOut className="h-4 w-4" />
           </button>
         </div>

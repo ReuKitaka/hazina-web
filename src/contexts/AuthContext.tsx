@@ -3,10 +3,20 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { AuthResponse } from '@/types'
 
+interface AuthUser {
+  email: string
+  role: string
+  organisationId?: string
+  orgName?: string
+}
+
 interface AuthContextType {
-  user: { email: string; role: string } | null
+  user: AuthUser | null
   token: string | null
+  isSuperAdmin: boolean
+  hasOrgContext: boolean
   login: (data: AuthResponse) => void
+  updateToken: (data: AuthResponse) => void
   logout: () => void
   isLoading: boolean
 }
@@ -14,7 +24,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<{ email: string; role: string } | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -29,10 +39,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const login = (data: AuthResponse) => {
+    const authUser: AuthUser = {
+      email: data.email,
+      role: data.role,
+      organisationId: data.organisationId,
+      orgName: data.orgName,
+    }
     localStorage.setItem('hazina_token', data.token)
-    localStorage.setItem('hazina_user', JSON.stringify({ email: data.email, role: data.role }))
+    localStorage.setItem('hazina_user', JSON.stringify(authUser))
     setToken(data.token)
-    setUser({ email: data.email, role: data.role })
+    setUser(authUser)
+  }
+
+  /** Updates token after org switch/exit without full logout/login cycle. */
+  const updateToken = (data: AuthResponse) => {
+    login(data)
   }
 
   const logout = () => {
@@ -42,8 +63,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }
 
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
+  const hasOrgContext = !!user?.organisationId
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, token, isSuperAdmin, hasOrgContext, login, updateToken, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   )

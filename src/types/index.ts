@@ -3,11 +3,37 @@ export interface AuthResponse {
   token: string
   email: string
   role: string
+  organisationId?: string
+  orgName?: string
 }
 
 export interface LoginRequest {
   email: string
   password: string
+}
+
+// ── Organisations ─────────────────────────────────────────────────────────────
+export interface Organisation {
+  id: string
+  name: string
+  slug: string
+  contactEmail: string
+  phone?: string
+  address?: string
+  status: 'PENDING' | 'ACTIVE' | 'SUSPENDED'
+  createdAt: string
+}
+
+export interface OrganisationRegistration {
+  orgName: string
+  slug: string
+  contactEmail: string
+  phone?: string
+  address?: string
+  adminEmail: string
+  adminPassword: string
+  firstName: string
+  lastName: string
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────────
@@ -252,7 +278,7 @@ export interface UserProfile {
   email: string
   firstName: string
   lastName: string
-  role: 'ADMIN' | 'ACCOUNTANT' | 'VIEWER'
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'ACCOUNTANT' | 'VIEWER'
   active: boolean
   lastLoginAt?: string
   createdAt: string
