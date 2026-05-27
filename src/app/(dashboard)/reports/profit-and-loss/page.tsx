@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { fmt } from '@/components/shared/amount'
 import { useState } from 'react'
 import { format, startOfMonth } from 'date-fns'
+import { ReportDownloadButtons } from '@/components/report-downloads'
 
 function Section({ title, lines, total, color }: {
   title: string
@@ -48,12 +49,15 @@ export default function ProfitAndLossPage() {
         title="Profit & Loss"
         description="Revenue and expenses for the selected period"
         action={
-          <div className="flex items-center gap-2">
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <span className="text-slate-400 text-sm">to</span>
-            <input type="date" value={to} onChange={e => setTo(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <span className="text-slate-400 text-sm">to</span>
+              <input type="date" value={to} onChange={e => setTo(e.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            {data && <ReportDownloadButtons report="profit-and-loss" data={data} />}
           </div>
         }
       />

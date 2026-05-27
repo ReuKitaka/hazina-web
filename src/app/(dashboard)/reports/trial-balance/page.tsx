@@ -7,6 +7,7 @@ import { fmt } from '@/components/shared/amount'
 import { BarChart3 } from 'lucide-react'
 import { useState } from 'react'
 import { format } from 'date-fns'
+import { ReportDownloadButtons } from '@/components/report-downloads'
 
 const TYPE_COLORS: Record<string, string> = {
   ASSET: 'bg-blue-50 text-blue-700',
@@ -32,12 +33,15 @@ export default function TrialBalancePage() {
         title="Trial Balance"
         description="All account balances as of a given date"
         action={
-          <input
-            type="date"
-            value={asOf}
-            onChange={e => setAsOf(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <div className="flex items-center gap-3">
+            <input
+              type="date"
+              value={asOf}
+              onChange={e => setAsOf(e.target.value)}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {data && <ReportDownloadButtons report="trial-balance" data={data} />}
+          </div>
         }
       />
 
