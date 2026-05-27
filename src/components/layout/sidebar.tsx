@@ -5,8 +5,9 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, BookOpen, FileText, Wallet, Receipt,
   ShoppingCart, Target, ArrowLeftRight, BarChart3, TrendingUp,
-  Building2, Activity, ChevronRight, LogOut, Users, LogOut as ExitIcon
+  Building2, Activity, ChevronRight, LogOut, Users, LogOut as ExitIcon,
 } from 'lucide-react'
+import { UserGuideDownloadButton } from '@/components/user-manual-pdf'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -178,6 +179,7 @@ export function Sidebar() {
 
       {/* User footer */}
       <div className="border-t border-slate-800 p-3">
+        <UserGuideDownloadButton />
         <div className="flex items-center gap-3 rounded-lg px-3 py-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white">
             {user?.email?.[0]?.toUpperCase()}
